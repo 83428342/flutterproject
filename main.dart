@@ -21,11 +21,12 @@ class MainRoom extends StatefulWidget {
 }
 
 class _MainRoomState extends State<MainRoom> {
-  final List<String> chattingRooms = [];
+  final List<Room> chattingRooms = [];
 
   void addChattingRoom(String roomName) {
     setState(() {
-      chattingRooms.add(roomName);
+      final newRoom = Room(name: roomName, id: DateTime.now().toString());
+      chattingRooms.add(newRoom);
     });
   }
 
@@ -89,7 +90,7 @@ class _MainRoomState extends State<MainRoom> {
         itemCount: chattingRooms.length,
         itemBuilder: (BuildContext context, int index) {
           return ListTile(
-            title: Text(chattingRooms[index]),
+            title: Text(chattingRooms[index].name),
             leading: const Icon(
               Icons.person,
               size: 40,
@@ -99,7 +100,7 @@ class _MainRoomState extends State<MainRoom> {
                 context,
                 MaterialPageRoute(
                   builder: (context) =>
-                      ChattingScreen(roomName: chattingRooms[index]),
+                      ChattingScreen(room: chattingRooms[index]),
                 ),
               );
             },
@@ -120,11 +121,82 @@ class _MainRoomState extends State<MainRoom> {
   }
 }
 
-class ChattingScreen extends StatelessWidget {
-  const ChattingScreen({super.key});
+class Room {
+  late final String name;
+  late final String id;
+
+  Room({
+    required this.name,
+    required this.id,
+  });
+}
+
+class ChattingScreen extends StatefulWidget {
+  final Room room;
+
+  const ChattingScreen({super.key, required this.room});
+
+  @override
+  State<ChattingScreen> createState() => _ChattingScreenState();
+}
+
+class _ChattingScreenState extends State<ChattingScreen> {
+  final List<String> messages = [];
+  final TextEditingController controller = TextEditingController();
+
+  void sendMessage() {
+    if (controller.text.isNotEmpty) {
+      setState(() {
+        messages.add(controller.text);
+        controller.clear();
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return const Placeholder();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.room.name),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              itemCount: messages.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  title: Container(
+                    padding: const EdgeInsets.all(8.0), // 텍스트 주변에 여백 추가
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      borderRadius: BorderRadius.circular(8.0), // 모서리를 둥글게
+                    ),
+                    child: Text(messages[index]),
+                  ),
+                );
+              },
+            ),
+          ),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(
+                    hintText: 'Type a message',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              IconButton(
+                onPressed: sendMessage,
+                icon: const Icon(Icons.send),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
