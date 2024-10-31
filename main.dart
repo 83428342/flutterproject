@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 void main() {
   runApp(const MyApp());
@@ -146,9 +148,43 @@ class _ChattingScreenState extends State<ChattingScreen> {
 
   void sendMessage() {
     if (controller.text.isNotEmpty) {
+      final userMessage = controller.text;
       setState(() {
-        messages.add(controller.text);
+        messages.add("User: $userMessage");
         controller.clear();
+      });
+      _sendMessage(userMessage);
+    }
+  }
+
+  Future<void> _sendMessage(String message) async {
+    final response = await http.post(
+      Uri.parse(
+          'https://api.groq.com/openai/v1/chat/completions'), // Llama API의 엔드포인트
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization':
+            'Bearer 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',
+      },
+      body: json.encode({
+        'model': 'llama3-8b-8192', // 모델 이름 설정
+        'messages': [
+          {'role': 'user', 'content': message} // 사용자 메시지
+        ]
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      final apiResponse =
+          data['choices'][0]['message']['content']; // Llama의 응답 메시지
+      setState(() {
+        messages.add("Llama: $apiResponse");
+      });
+    } else {
+      setState(() {
+        messages.add(
+            'Llama: Failed to get response. Status: ${response.statusCode}');
       });
     }
   }
@@ -167,10 +203,12 @@ class _ChattingScreenState extends State<ChattingScreen> {
               itemBuilder: (context, index) {
                 return ListTile(
                   title: Container(
-                    padding: const EdgeInsets.all(8.0), // 텍스트 주변에 여백 추가
+                    padding: const EdgeInsets.all(8.0),
                     decoration: BoxDecoration(
-                      color: Colors.orange,
-                      borderRadius: BorderRadius.circular(8.0), // 모서리를 둥글게
+                      color: index.isEven
+                          ? Colors.orange
+                          : Colors.grey[300], // 사용자와 Llama의 메시지 색상 구분
+                      borderRadius: BorderRadius.circular(8.0),
                     ),
                     child: Text(messages[index]),
                   ),
@@ -196,106 +234,6 @@ class _ChattingScreenState extends State<ChattingScreen> {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
--------------------------------------------------------------------------------------------------------------------------------------
-
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-
-void main() {
-  runApp(const MyApp());
-}
-
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: LlamaChatScreen(),
-    );
-  }
-}
-
-class LlamaChatScreen extends StatefulWidget {
-  const LlamaChatScreen({super.key});
-
-  @override
-  State<LlamaChatScreen> createState() => _LlamaChatScreenState();
-}
-
-class _LlamaChatScreenState extends State<LlamaChatScreen> {
-  final TextEditingController _controller = TextEditingController();
-  String _response = '';
-
-  Future<void> _sendMessage(String message) async {
-    final response = await http.post(
-      Uri.parse(
-          'https://api.groq.com/openai/v1/chat/completions'), // Llama API의 엔드포인트
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization':
-            'Bearer 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',
-      },
-      body: json.encode({
-        'model': 'llama3-8b-8192', // 모델 이름 설정
-        'messages': [
-          {'role': 'user', 'content': message} // 사용자 메시지
-        ]
-      }),
-    );
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      setState(() {
-        _response = data['choices'][0]['message']['content']; // Llama의 응답 메시지
-      });
-    } else {
-      setState(() {
-        _response = 'Failed to get response. Status: ${response.statusCode}';
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Llama Chat')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: _controller,
-              decoration: const InputDecoration(
-                labelText: 'Enter your message',
-              ),
-            ),
-            const SizedBox(height: 8.0),
-            ElevatedButton(
-              onPressed: () {
-                final message = _controller.text;
-                if (message.isNotEmpty) {
-                  _sendMessage(message); // Llama API 호출
-                  _controller.clear(); // 입력 필드 초기화
-                }
-              },
-              child: const Text('Send'),
-            ),
-            const SizedBox(height: 16.0),
-            const Text(
-              'Response from Llama:',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8.0),
-            Text(_response), // Llama의 응답 표시
-          ],
-        ),
       ),
     );
   }
