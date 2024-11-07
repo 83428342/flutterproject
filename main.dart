@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:intl/intl.dart';
 
 void main() {
   runApp(const MyApp());
@@ -24,11 +25,13 @@ class MainRoom extends StatefulWidget {
 
 class _MainRoomState extends State<MainRoom> {
   final List<Room> chattingRooms = [];
+  int _selectedSortIndex = 0;
 
   void addChattingRoom(String roomName) {
     setState(() {
       final newRoom = Room(name: roomName, id: DateTime.now().toString());
       chattingRooms.add(newRoom);
+      _sortRooms();
     });
   }
 
@@ -68,11 +71,31 @@ class _MainRoomState extends State<MainRoom> {
         });
   }
 
+  void _sortRooms() {
+    setState(() {
+      chattingRooms.sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        if (_selectedSortIndex == 0) {
+          return a.name.compareTo(b.name);
+        } else {
+          return (b.lastMessageTime ?? DateTime.now())
+              .compareTo(a.lastMessageTime ?? DateTime.now());
+        }
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chatting'),
+        title: const Text(
+          'Chatting',
+          style: TextStyle(
+            fontWeight: FontWeight.w500,
+          ),
+        ),
         actions: [
           const IconButton(
             onPressed: null,
@@ -91,46 +114,136 @@ class _MainRoomState extends State<MainRoom> {
       body: ListView.builder(
         itemCount: chattingRooms.length,
         itemBuilder: (BuildContext context, int index) {
+          final room = chattingRooms[index];
+
+          final now = DateTime.now();
+          String timeDisplay;
+          if (room.lastMessageTime != null) {
+            final difference = now.difference(room.lastMessageTime!);
+            if (difference.inDays > 1) {
+              timeDisplay = DateFormat('MM/dd').format(room.lastMessageTime!);
+            } else if (difference.inDays == 1) {
+              timeDisplay = 'Yesterday';
+            } else {
+              timeDisplay = DateFormat('HH:mm').format(room.lastMessageTime!);
+            }
+          } else {
+            timeDisplay = '';
+          }
+
           return ListTile(
-            title: Text(chattingRooms[index].name),
-            leading: const Icon(
-              Icons.person,
-              size: 40,
+            leading: CircleAvatar(
+              backgroundColor: Colors.grey[300],
+              child: const Icon(Icons.person, color: Colors.white),
+            ),
+            title: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    room.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+                if (room.isPinned)
+                  const Icon(Icons.push_pin, size: 16, color: Colors.orange),
+              ],
+            ),
+            subtitle: Text(
+              room.lastMessage.isEmpty ? 'No messages yet' : room.lastMessage,
+              style: TextStyle(
+                color: Colors.grey[500],
+                fontSize: 14,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  timeDisplay,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${room.messages.length}', // 전체 메시지 개수로 변경
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
             ),
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) =>
-                      ChattingScreen(room: chattingRooms[index]),
+                  builder: (context) => ChattingScreen(room: room),
                 ),
-              );
+              ).then((_) {
+                setState(() {});
+              });
+            },
+            onLongPress: () {
+              setState(() {
+                room.isPinned = !room.isPinned;
+                _sortRooms();
+              });
             },
           );
         },
       ),
-      bottomNavigationBar: BottomNavigationBar(items: const [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.person),
-          label: 'Sort by name',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.chat_bubble_outline),
-          label: 'Sort by date',
-        ),
-      ]),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedSortIndex,
+        onTap: (index) {
+          setState(() {
+            _selectedSortIndex = index;
+            _sortRooms();
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person),
+            label: 'Sort by name',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.chat_bubble_outline),
+            label: 'Sort by date',
+          ),
+        ],
+      ),
     );
   }
 }
 
 class Room {
-  late final String name;
-  late final String id;
+  final String name;
+  final String id;
+  String lastMessage;
+  DateTime? lastMessageTime;
+  bool isPinned;
+  List<String> messages;
 
   Room({
     required this.name,
     required this.id,
-  });
+    this.lastMessage = '',
+    this.isPinned = false,
+    DateTime? lastMessageTime,
+  })  : lastMessageTime = lastMessageTime ?? DateTime.now(),
+        messages = [];
 }
 
 class ChattingScreen extends StatefulWidget {
@@ -143,14 +256,16 @@ class ChattingScreen extends StatefulWidget {
 }
 
 class _ChattingScreenState extends State<ChattingScreen> {
-  final List<String> messages = [];
   final TextEditingController controller = TextEditingController();
+  String? pinnedMessage;
 
   void sendMessage() {
     if (controller.text.isNotEmpty) {
       final userMessage = controller.text;
       setState(() {
-        messages.add("User: $userMessage");
+        widget.room.messages.add("User: $userMessage");
+        widget.room.lastMessage = userMessage;
+        widget.room.lastMessageTime = DateTime.now();
         controller.clear();
       });
       _sendMessage(userMessage);
@@ -159,32 +274,35 @@ class _ChattingScreenState extends State<ChattingScreen> {
 
   Future<void> _sendMessage(String message) async {
     final response = await http.post(
-      Uri.parse(
-          'https://api.groq.com/openai/v1/chat/completions'), // Llama API의 엔드포인트
+      Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization':
             'Bearer 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',
       },
       body: json.encode({
-        'model': 'llama3-8b-8192', // 모델 이름 설정
+        'model': 'llama3-8b-8192',
         'messages': [
-          {'role': 'user', 'content': message} // 사용자 메시지
+          {'role': 'user', 'content': message}
         ]
       }),
     );
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      final apiResponse =
-          data['choices'][0]['message']['content']; // Llama의 응답 메시지
+      final apiResponse = data['choices'][0]['message']['content'];
       setState(() {
-        messages.add("Llama: $apiResponse");
+        widget.room.messages.add("Llama: $apiResponse");
+        widget.room.lastMessage = apiResponse;
+        widget.room.lastMessageTime = DateTime.now();
       });
     } else {
       setState(() {
-        messages.add(
-            'Llama: Failed to get response. Status: ${response.statusCode}');
+        final errorMessage =
+            'Llama: Failed to get response. Status: ${response.statusCode}';
+        widget.room.messages.add(errorMessage);
+        widget.room.lastMessage = errorMessage;
+        widget.room.lastMessageTime = DateTime.now();
       });
     }
   }
@@ -197,20 +315,50 @@ class _ChattingScreenState extends State<ChattingScreen> {
       ),
       body: Column(
         children: [
+          if (pinnedMessage != null)
+            Container(
+              padding: const EdgeInsets.all(12.0),
+              color: Colors.amberAccent,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      pinnedMessage!,
+                      style: const TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      setState(() {
+                        pinnedMessage = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: ListView.builder(
-              itemCount: messages.length,
+              itemCount: widget.room.messages.length,
               itemBuilder: (context, index) {
-                return ListTile(
-                  title: Container(
-                    padding: const EdgeInsets.all(8.0),
-                    decoration: BoxDecoration(
-                      color: index.isEven
-                          ? Colors.orange
-                          : Colors.grey[300], // 사용자와 Llama의 메시지 색상 구분
-                      borderRadius: BorderRadius.circular(8.0),
+                return GestureDetector(
+                  onLongPress: () {
+                    setState(() {
+                      pinnedMessage = widget.room.messages[index];
+                    });
+                  },
+                  child: ListTile(
+                    title: Container(
+                      padding: const EdgeInsets.all(8.0),
+                      decoration: BoxDecoration(
+                        color: index.isEven ? Colors.orange : Colors.grey[300],
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
+                      child: Text(widget.room.messages[index]),
                     ),
-                    child: Text(messages[index]),
                   ),
                 );
               },
