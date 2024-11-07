@@ -39,36 +39,36 @@ class _MainRoomState extends State<MainRoom> {
     String roomName = '';
 
     showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: const Text('Agent Name'),
-            content: TextField(
-              onChanged: (value) {
-                roomName = value;
-              },
-              decoration:
-                  const InputDecoration(hintText: 'Write down new name.'),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  if (roomName.isNotEmpty) {
-                    addChattingRoom(roomName);
-                    Navigator.of(context).pop();
-                  }
-                },
-                child: const Text('Apply'),
-              ),
-              TextButton(
-                onPressed: () {
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Agent Name'),
+          content: TextField(
+            onChanged: (value) {
+              roomName = value;
+            },
+            decoration: const InputDecoration(hintText: 'Write down new name.'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                if (roomName.isNotEmpty) {
+                  addChattingRoom(roomName);
                   Navigator.of(context).pop();
-                },
-                child: const Text('Cancel'),
-              ),
-            ],
-          );
-        });
+                }
+              },
+              child: const Text('Apply'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _sortRooms() {
@@ -177,7 +177,7 @@ class _MainRoomState extends State<MainRoom> {
                     shape: BoxShape.circle,
                   ),
                   child: Text(
-                    '${room.messages.length}', // 전체 메시지 개수로 변경
+                    '${room.messages.length}',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -197,10 +197,36 @@ class _MainRoomState extends State<MainRoom> {
               });
             },
             onLongPress: () {
-              setState(() {
-                room.isPinned = !room.isPinned;
-                _sortRooms();
-              });
+              showDialog(
+                context: context,
+                builder: (BuildContext context) {
+                  return AlertDialog(
+                    title:
+                        Text(room.isPinned ? 'Unstick on top' : 'Stick on top'),
+                    content: Text(room.isPinned
+                        ? "Do you want to unput '${room.name}' on the top of the list?"
+                        : "Do you want to put '${room.name}' on the top of the list?"),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            room.isPinned = !room.isPinned;
+                            _sortRooms();
+                          });
+                          Navigator.of(context).pop(); // Close dialog
+                        },
+                        child: const Text('Yes'),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Close dialog
+                        },
+                        child: const Text('No'),
+                      ),
+                    ],
+                  );
+                },
+              );
             },
           );
         },
@@ -234,7 +260,7 @@ class Room {
   String lastMessage;
   DateTime? lastMessageTime;
   bool isPinned;
-  List<String> messages;
+  List<Message> messages;
 
   Room({
     required this.name,
@@ -244,6 +270,18 @@ class Room {
     DateTime? lastMessageTime,
   })  : lastMessageTime = lastMessageTime ?? DateTime.now(),
         messages = [];
+}
+
+class Message {
+  final String sender;
+  final String content;
+  final DateTime timestamp;
+
+  Message({
+    required this.sender,
+    required this.content,
+    required this.timestamp,
+  });
 }
 
 class ChattingScreen extends StatefulWidget {
@@ -258,17 +296,24 @@ class ChattingScreen extends StatefulWidget {
 class _ChattingScreenState extends State<ChattingScreen> {
   final TextEditingController controller = TextEditingController();
   String? pinnedMessage;
+  final ScrollController _scrollController = ScrollController();
 
   void sendMessage() {
     if (controller.text.isNotEmpty) {
       final userMessage = controller.text;
+      final timestamp = DateTime.now();
       setState(() {
-        widget.room.messages.add("User: $userMessage");
+        widget.room.messages.add(Message(
+          sender: 'User',
+          content: userMessage,
+          timestamp: timestamp,
+        ));
         widget.room.lastMessage = userMessage;
-        widget.room.lastMessageTime = DateTime.now();
+        widget.room.lastMessageTime = timestamp;
         controller.clear();
       });
       _sendMessage(userMessage);
+      _scrollToBottom();
     }
   }
 
@@ -288,23 +333,53 @@ class _ChattingScreenState extends State<ChattingScreen> {
       }),
     );
 
+    final timestamp = DateTime.now();
+
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       final apiResponse = data['choices'][0]['message']['content'];
       setState(() {
-        widget.room.messages.add("Llama: $apiResponse");
+        widget.room.messages.add(Message(
+          sender: 'Llama',
+          content: apiResponse,
+          timestamp: timestamp,
+        ));
         widget.room.lastMessage = apiResponse;
-        widget.room.lastMessageTime = DateTime.now();
+        widget.room.lastMessageTime = timestamp;
       });
     } else {
+      final errorMessage =
+          'Llama: Failed to get response. Status: ${response.statusCode}';
       setState(() {
-        final errorMessage =
-            'Llama: Failed to get response. Status: ${response.statusCode}';
-        widget.room.messages.add(errorMessage);
+        widget.room.messages.add(Message(
+          sender: 'Llama',
+          content: errorMessage,
+          timestamp: timestamp,
+        ));
         widget.room.lastMessage = errorMessage;
-        widget.room.lastMessageTime = DateTime.now();
+        widget.room.lastMessageTime = timestamp;
       });
     }
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 100,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    _scrollController.dispose();
+    super.dispose();
   }
 
   @override
@@ -342,44 +417,238 @@ class _ChattingScreenState extends State<ChattingScreen> {
             ),
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               itemCount: widget.room.messages.length,
               itemBuilder: (context, index) {
-                return GestureDetector(
-                  onLongPress: () {
+                final message = widget.room.messages[index];
+                final isUserMessage = message.sender == 'User';
+
+                return Dismissible(
+                  key: Key(message.content + index.toString()),
+                  direction: DismissDirection.endToStart,
+                  onDismissed: (direction) {
                     setState(() {
-                      pinnedMessage = widget.room.messages[index];
+                      widget.room.messages.removeAt(index);
+                      if (widget.room.messages.isNotEmpty) {
+                        final lastMessage = widget.room.messages.last;
+                        widget.room.lastMessage = lastMessage.content;
+                        widget.room.lastMessageTime = lastMessage.timestamp;
+                      } else {
+                        widget.room.lastMessage = '';
+                        widget.room.lastMessageTime = null;
+                      }
                     });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Message deleted')),
+                    );
                   },
-                  child: ListTile(
-                    title: Container(
-                      padding: const EdgeInsets.all(8.0),
-                      decoration: BoxDecoration(
-                        color: index.isEven ? Colors.orange : Colors.grey[300],
-                        borderRadius: BorderRadius.circular(8.0),
+                  background: Container(
+                    color: Colors.red,
+                    alignment: Alignment.centerRight,
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: const Icon(Icons.delete, color: Colors.white),
+                  ),
+                  child: GestureDetector(
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (BuildContext context) {
+                          return SimpleDialog(
+                            children: [
+                              ListTile(
+                                title: const Text('Copy'),
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                              ListTile(
+                                title: const Text('Share'),
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                              ListTile(
+                                title: const Text('Delete message'),
+                                onTap: () {
+                                  setState(() {
+                                    widget.room.messages.removeAt(index);
+                                    if (widget.room.messages.isNotEmpty) {
+                                      final lastMessage =
+                                          widget.room.messages.last;
+                                      widget.room.lastMessage =
+                                          lastMessage.content;
+                                      widget.room.lastMessageTime =
+                                          lastMessage.timestamp;
+                                    } else {
+                                      widget.room.lastMessage = '';
+                                      widget.room.lastMessageTime = null;
+                                    }
+                                  });
+                                  Navigator.of(context).pop();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content: Text('Message deleted')),
+                                  );
+                                },
+                              ),
+                              ListTile(
+                                title: const Text('Stick the message on top'),
+                                onTap: () {
+                                  setState(() {
+                                    pinnedMessage = message.content;
+                                  });
+                                  Navigator.of(context).pop();
+                                },
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                    onLongPress: () {
+                      setState(() {
+                        pinnedMessage = message.content;
+                      });
+                    },
+                    child: Align(
+                      alignment: isUserMessage
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8.0, vertical: 4.0),
+                        child: isUserMessage
+                            ? Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Flexible(
+                                    child: Container(
+                                      constraints: BoxConstraints(
+                                        maxWidth:
+                                            MediaQuery.of(context).size.width *
+                                                0.6,
+                                      ),
+                                      padding: const EdgeInsets.all(12.0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.blueAccent,
+                                        borderRadius:
+                                            BorderRadius.circular(16.0),
+                                      ),
+                                      child: Text(
+                                        message.content,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    DateFormat('HH:mm')
+                                        .format(message.timestamp),
+                                    style: const TextStyle(
+                                        fontSize: 12, color: Colors.grey),
+                                  ),
+                                ],
+                              )
+                            : Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Flexible(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            CircleAvatar(
+                                              backgroundColor: Colors.grey[300],
+                                              child: const Icon(Icons.person,
+                                                  color: Colors.white),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              widget.room.name,
+                                              style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          constraints: BoxConstraints(
+                                            maxWidth: MediaQuery.of(context)
+                                                    .size
+                                                    .width *
+                                                0.6,
+                                          ),
+                                          padding: const EdgeInsets.all(12.0),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey[300],
+                                            borderRadius:
+                                                BorderRadius.circular(16.0),
+                                          ),
+                                          child: Text(
+                                            message.content,
+                                            style: const TextStyle(
+                                              color: Colors.black,
+                                              fontSize: 16,
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          DateFormat('HH:mm')
+                                              .format(message.timestamp),
+                                          style: const TextStyle(
+                                              fontSize: 12, color: Colors.grey),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                       ),
-                      child: Text(widget.room.messages[index]),
                     ),
                   ),
                 );
               },
             ),
           ),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  decoration: const InputDecoration(
-                    hintText: 'Type a message',
-                    border: OutlineInputBorder(),
+          Container(
+            padding: const EdgeInsets.only(
+                left: 8.0, right: 8.0, bottom: 8.0, top: 4.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: controller,
+                    decoration: InputDecoration(
+                      hintText: 'Type a message',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(24.0),
+                        borderSide: BorderSide.none,
+                      ),
+                      fillColor: Colors.grey[200],
+                      filled: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16.0, vertical: 0.0),
+                    ),
                   ),
                 ),
-              ),
-              IconButton(
-                onPressed: sendMessage,
-                icon: const Icon(Icons.send),
-              ),
-            ],
+                const SizedBox(width: 8),
+                CircleAvatar(
+                  backgroundColor: Colors.blueAccent,
+                  child: IconButton(
+                    onPressed: sendMessage,
+                    icon: const Icon(Icons.send, color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
