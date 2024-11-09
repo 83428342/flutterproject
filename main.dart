@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:io';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:downloads_path_provider_28/downloads_path_provider_28.dart'; // 추가된 import
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart'; // 추가된 import
 
 void main() {
   runApp(const MyApp());
@@ -34,21 +33,20 @@ class _MainRoomState extends State<MainRoom> {
   @override
   void initState() {
     super.initState();
-    loadChatRooms(); // 채팅방 목록 로드
+    _initializeAsync(); // 비동기 초기화 함수 호출
   }
 
-  Future<String> _getDownloadsDirectory() async {
-    if (await Permission.storage.request().isGranted) {
-      Directory? downloadsDirectory =
-          await DownloadsPathProvider.downloadsDirectory;
-      return downloadsDirectory!.path;
-    } else {
-      throw Exception('Storage permission not granted');
-    }
+  Future<void> _initializeAsync() async {
+    await loadChatRooms(); // 채팅방 목록 로드
+  }
+
+  Future<String> _getDocumentsDirectory() async {
+    final directory = await getApplicationDocumentsDirectory();
+    return directory.path;
   }
 
   Future<void> saveChatRooms() async {
-    final path = await _getDownloadsDirectory();
+    final path = await _getDocumentsDirectory();
     final file = File('$path/chatlog.json');
     List<Map<String, dynamic>> jsonList =
         chattingRooms.map((room) => room.toJson()).toList();
@@ -56,7 +54,7 @@ class _MainRoomState extends State<MainRoom> {
   }
 
   Future<void> loadChatRooms() async {
-    final path = await _getDownloadsDirectory();
+    final path = await _getDocumentsDirectory();
     final file = File('$path/chatlog.json');
     if (await file.exists()) {
       String contents = await file.readAsString();
@@ -230,19 +228,20 @@ class _MainRoomState extends State<MainRoom> {
                       ),
                 ),
                 const SizedBox(height: 4),
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
-                    shape: BoxShape.circle,
+                if (room.messages.isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      '${room.messages.length}',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: Colors.white,
+                          ),
+                    ),
                   ),
-                  child: Text(
-                    '${room.messages.length}',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: Colors.white,
-                        ),
-                  ),
-                ),
               ],
             ),
             onTap: () {
@@ -328,8 +327,9 @@ class Room {
     this.lastMessage = '',
     this.isPinned = false,
     DateTime? lastMessageTime,
+    List<Message>? messages,
   })  : lastMessageTime = lastMessageTime ?? DateTime.now(),
-        messages = [];
+        messages = messages ?? [];
 
   Map<String, dynamic> toJson() {
     return {
@@ -338,6 +338,7 @@ class Room {
       'lastMessage': lastMessage,
       'lastMessageTime': lastMessageTime?.toIso8601String(),
       'isPinned': isPinned,
+      'messages': messages.map((msg) => msg.toJson()).toList(),
     };
   }
 
@@ -350,6 +351,10 @@ class Room {
           ? DateTime.parse(json['lastMessageTime'])
           : null,
       isPinned: json['isPinned'] ?? false,
+      messages: (json['messages'] as List<dynamic>?)
+              ?.map((msgJson) => Message.fromJson(msgJson))
+              .toList() ??
+          [],
     );
   }
 }
@@ -396,6 +401,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
   String? pinnedMessage;
   final ScrollController _scrollController = ScrollController();
   bool isButtonEnabled = false;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -405,41 +411,31 @@ class _ChattingScreenState extends State<ChattingScreen> {
         isButtonEnabled = controller.text.length >= 20;
       });
     });
-    loadMessages(); // 채팅 로그 로드
   }
 
-  Future<String> _getDownloadsDirectory() async {
-    if (await Permission.storage.request().isGranted) {
-      Directory? downloadsDirectory =
-          await DownloadsPathProvider.downloadsDirectory;
-      return downloadsDirectory!.path;
-    } else {
-      throw Exception('Storage permission not granted');
-    }
+  Future<String> _getDocumentsDirectory() async {
+    final directory = await getApplicationDocumentsDirectory();
+    return directory.path;
   }
 
-  Future<void> saveMessages() async {
-    final path = await _getDownloadsDirectory();
-    final fileName = 'log_${widget.room.name}.json';
-    final file = File('$path/$fileName');
-    List<Map<String, dynamic>> jsonList =
-        widget.room.messages.map((msg) => msg.toJson()).toList();
-    await file.writeAsString(json.encode(jsonList));
-  }
-
-  Future<void> loadMessages() async {
-    final path = await _getDownloadsDirectory();
-    final fileName = 'log_${widget.room.name}.json';
-    final file = File('$path/$fileName');
+  Future<void> saveChatRooms() async {
+    final path = await _getDocumentsDirectory();
+    final file = File('$path/chatlog.json');
+    List<Room> allRooms = [];
     if (await file.exists()) {
       String contents = await file.readAsString();
       List<dynamic> jsonList = json.decode(contents);
-      setState(() {
-        widget.room.messages.clear();
-        widget.room.messages
-            .addAll(jsonList.map((json) => Message.fromJson(json)).toList());
-      });
+      allRooms = jsonList.map((json) => Room.fromJson(json)).toList();
     }
+    int index = allRooms.indexWhere((room) => room.id == widget.room.id);
+    if (index != -1) {
+      allRooms[index] = widget.room;
+    } else {
+      allRooms.add(widget.room);
+    }
+    List<Map<String, dynamic>> jsonList =
+        allRooms.map((room) => room.toJson()).toList();
+    await file.writeAsString(json.encode(jsonList));
   }
 
   List<Map<String, String>> getMessagesForApi() {
@@ -465,9 +461,16 @@ class _ChattingScreenState extends State<ChattingScreen> {
         widget.room.lastMessageTime = timestamp;
         controller.clear();
         isButtonEnabled = false;
+        _isLoading = true; // 로딩 시작
       });
-      saveMessages(); // 저장
-      _sendMessage(userMessage);
+      saveChatRooms(); // 저장
+      _sendMessage(userMessage).then((_) {
+        if (mounted) {
+          setState(() {
+            _isLoading = false; // 로딩 종료
+          });
+        }
+      });
       _scrollToBottom();
     }
   }
@@ -493,29 +496,22 @@ class _ChattingScreenState extends State<ChattingScreen> {
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       final apiResponse = data['choices'][0]['message']['content'];
+      if (!mounted) return;
       setState(() {
         widget.room.messages.add(Message(
-          sender: 'Llama',
+          sender: 'Assistant',
           content: apiResponse,
           timestamp: timestamp,
         ));
         widget.room.lastMessage = apiResponse;
         widget.room.lastMessageTime = timestamp;
       });
-      saveMessages(); // 저장
+      saveChatRooms(); // 저장
     } else {
-      final errorMessage =
-          'Llama: Failed to get response. Status: ${response.statusCode}';
-      setState(() {
-        widget.room.messages.add(Message(
-          sender: 'Llama',
-          content: errorMessage,
-          timestamp: timestamp,
-        ));
-        widget.room.lastMessage = errorMessage;
-        widget.room.lastMessageTime = timestamp;
-      });
-      saveMessages(); // 저장
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to get response from server.')),
+      );
     }
     _scrollToBottom();
   }
@@ -548,7 +544,8 @@ class _ChattingScreenState extends State<ChattingScreen> {
       ),
       body: Column(
         children: [
-          const SizedBox(height: 10), // AppBar와 핀된 메시지 사이 간격 추가
+          const SizedBox(height: 10),
+          if (_isLoading) const LinearProgressIndicator(), // 로딩 인디케이터 표시
           if (pinnedMessage != null)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -603,7 +600,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                         widget.room.lastMessageTime = null;
                       }
                     });
-                    saveMessages(); // 저장
+                    saveChatRooms(); // 저장
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Message deleted')),
                     );
@@ -617,7 +614,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                   child: GestureDetector(
                     onTap: () {
                       showDialog(
-                        barrierDismissible: false, // 다이얼로그 바깥을 눌러도 닫히지 않도록 설정
+                        barrierDismissible: false,
                         context: context,
                         builder: (BuildContext context) {
                           return SimpleDialog(
@@ -654,7 +651,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                                       widget.room.lastMessageTime = null;
                                     }
                                   });
-                                  saveMessages(); // 저장
+                                  saveChatRooms(); // 저장
                                   Navigator.of(context).pop();
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
@@ -829,7 +826,8 @@ class _ChattingScreenState extends State<ChattingScreen> {
                 CircleAvatar(
                   backgroundColor: Colors.yellow, // 전송 버튼 배경색 노란색
                   child: IconButton(
-                    onPressed: isButtonEnabled ? sendMessage : null,
+                    onPressed:
+                        isButtonEnabled && !_isLoading ? sendMessage : null,
                     icon: const Icon(Icons.send, color: Colors.white),
                   ),
                 ),
