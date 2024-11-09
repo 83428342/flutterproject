@@ -510,7 +510,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to get response from server.')),
+        const SnackBar(content: Text('Failed to get response from server.')),
       );
     }
     _scrollToBottom();
