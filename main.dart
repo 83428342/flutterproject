@@ -29,7 +29,7 @@ class MainRoom extends StatefulWidget {
 class _MainRoomState extends State<MainRoom>
     with SingleTickerProviderStateMixin {
   final List<Room> chattingRooms = [];
-  late TabController _tabController; // TabController 추가
+  late TabController _tabController;
 
   @override
   void initState() {
@@ -40,16 +40,16 @@ class _MainRoomState extends State<MainRoom>
         _sortRooms();
       }
     });
-    _initializeAsync(); // 비동기 초기화
+    _initializeAsync();
   }
 
   Future<void> _initializeAsync() async {
-    await loadChatRooms(); // 채팅방 로드
+    await loadChatRooms();
   }
 
   Future<String> _getDocumentsDirectory() async {
     if (Platform.isAndroid) {
-      return '/storage/emulated/0/Download'; // 다운로드 폴더 경로
+      return '/storage/emulated/0/Download';
     } else {
       final directory = await getApplicationDocumentsDirectory();
       return directory.path;
@@ -86,7 +86,7 @@ class _MainRoomState extends State<MainRoom>
       chattingRooms.add(newRoom);
       _sortRooms();
     });
-    saveChatRoom(chattingRooms.last); // 새 채팅방 저장
+    saveChatRoom(chattingRooms.last);
   }
 
   Future<void> saveChatRoom(Room room) async {
@@ -109,14 +109,13 @@ class _MainRoomState extends State<MainRoom>
     bool isAgentNameValid = false;
 
     showDialog(
-      barrierDismissible: false, // 다이얼로그 밖을 탭하여 닫히는 것을 방지
+      barrierDismissible: false,
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setState) {
             bool validateAgentName(String value) {
-              // 10자 이상의 문자, 숫자, 밑줄만 허용
-              RegExp regExp = RegExp(r'^[a-zA-Z0-9_]{10,}$');
+              RegExp regExp = RegExp(r'^[a-zA-Z0-9_]{1,10}$');
               return regExp.hasMatch(value);
             }
 
@@ -124,7 +123,7 @@ class _MainRoomState extends State<MainRoom>
               title: const Text('Agent Name'),
               content: TextField(
                 controller: controller,
-                maxLines: 1, // 단일 행 입력
+                maxLines: 1,
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
                 ],
@@ -167,10 +166,8 @@ class _MainRoomState extends State<MainRoom>
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
         if (_tabController.index == 0) {
-          // 이름으로 정렬
           return a.name.compareTo(b.name);
         } else {
-          // 날짜로 정렬
           return (b.lastMessageTime ?? DateTime.now())
               .compareTo(a.lastMessageTime ?? DateTime.now());
         }
@@ -180,7 +177,7 @@ class _MainRoomState extends State<MainRoom>
 
   @override
   void dispose() {
-    _tabController.dispose(); // TabController 해제
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -247,31 +244,47 @@ class _MainRoomState extends State<MainRoom>
                 }
 
                 return ListTile(
-                  leading: CircleAvatar(
-                    radius: 20,
-                    backgroundColor: Colors.grey[300],
-                    child: const Icon(Icons.person, color: Colors.white),
+                  leading: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.grey[300],
+                      child: const Icon(Icons.person, color: Colors.white),
+                    ),
                   ),
                   title: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Expanded(
-                        child: Text(
-                          room.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                      Text(
+                        room.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
                         ),
                       ),
+                      if (room.messages.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4.0),
+                          child: Text(
+                            '${room.messages.length}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: Colors.grey[500],
+                                ),
+                          ),
+                        ),
                       if (room.isPinned)
-                        const Icon(Icons.push_pin,
-                            size: 16, color: Colors.orange),
+                        const Padding(
+                          padding: EdgeInsets.only(left: 8.0),
+                          child: Icon(Icons.push_pin,
+                              size: 16, color: Colors.orange),
+                        ),
                     ],
                   ),
                   subtitle: Text(
-                    room.lastMessage.isEmpty
-                        ? 'No messages yet'
-                        : room.lastMessage,
+                    room.lastMessage.isEmpty ? '' : room.lastMessage,
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: Colors.grey[500],
                         ),
@@ -334,14 +347,14 @@ class _MainRoomState extends State<MainRoom>
                                   room.isPinned = !room.isPinned;
                                   _sortRooms();
                                 });
-                                saveChatRoom(room); // 채팅방 저장
-                                Navigator.of(context).pop(); // 다이얼로그 닫기
+                                saveChatRoom(room);
+                                Navigator.of(context).pop();
                               },
                               child: const Text('Yes'),
                             ),
                             TextButton(
                               onPressed: () {
-                                Navigator.of(context).pop(); // 다이얼로그 닫기
+                                Navigator.of(context).pop();
                               },
                               child: const Text('No'),
                             ),
@@ -446,6 +459,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
   final ScrollController _scrollController = ScrollController();
   bool isButtonEnabled = false;
   bool _isLoading = false;
+  bool isPinnedMessageExpanded = false;
 
   @override
   void initState() {
@@ -459,7 +473,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
 
   Future<String> _getDocumentsDirectory() async {
     if (Platform.isAndroid) {
-      return '/storage/emulated/0/Download'; // 다운로드 폴더 경로
+      return '/storage/emulated/0/Download';
     } else {
       final directory = await getApplicationDocumentsDirectory();
       return directory.path;
@@ -503,13 +517,13 @@ class _ChattingScreenState extends State<ChattingScreen> {
         widget.room.lastMessageTime = timestamp;
         controller.clear();
         isButtonEnabled = false;
-        _isLoading = true; // 로딩 시작
+        _isLoading = true;
       });
-      saveChatRoom(); // 채팅방 저장
+      saveChatRoom();
       _sendMessage(userMessage).then((_) {
         if (mounted) {
           setState(() {
-            _isLoading = false; // 로딩 종료
+            _isLoading = false;
           });
         }
       });
@@ -549,7 +563,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
           widget.room.lastMessage = apiResponse;
           widget.room.lastMessageTime = timestamp;
         });
-        saveChatRoom(); // 채팅방 저장
+        saveChatRoom();
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -581,6 +595,26 @@ class _ChattingScreenState extends State<ChattingScreen> {
     });
   }
 
+  bool isPinnedMessageMultiLine() {
+    final span = TextSpan(
+      text: pinnedMessage!,
+      style: Theme.of(context)
+          .textTheme
+          .bodyMedium
+          ?.copyWith(fontWeight: FontWeight.bold),
+    );
+
+    final tp = TextPainter(
+      text: span,
+      maxLines: 1,
+      textDirection: Directionality.of(context),
+    );
+
+    tp.layout(maxWidth: MediaQuery.of(context).size.width - 100);
+
+    return tp.didExceedMaxLines;
+  }
+
   @override
   void dispose() {
     controller.dispose();
@@ -588,305 +622,377 @@ class _ChattingScreenState extends State<ChattingScreen> {
     super.dispose();
   }
 
+  Widget buildAssistantMessage(Message message) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end, // 아래쪽 정렬
+      children: [
+        CircleAvatar(
+          backgroundColor: Colors.grey[300],
+          child: const Icon(Icons.person, color: Colors.white),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.6,
+                ),
+                padding: const EdgeInsets.all(12.0),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.only(
+                    topRight: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                ),
+                child: Text(
+                  message.content,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          DateFormat('HH:mm').format(message.timestamp),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Colors.grey,
+              ),
+        ),
+      ],
+    );
+  }
+
+  Widget buildUserMessage(Message message) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.end, // 아래쪽 정렬
+      children: [
+        Text(
+          DateFormat('HH:mm').format(message.timestamp),
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: Colors.grey,
+              ),
+        ),
+        const SizedBox(width: 8),
+        Flexible(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Container(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.6,
+                ),
+                padding: const EdgeInsets.all(12.0),
+                decoration: BoxDecoration(
+                  color: Colors.yellow[600],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    bottomLeft: Radius.circular(16),
+                    bottomRight: Radius.circular(16),
+                  ),
+                ),
+                child: Text(
+                  message.content,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 16,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[200], // 채팅방 배경색
+      backgroundColor: Colors.blue[200],
       appBar: AppBar(
         title: Text(widget.room.name),
       ),
-      body: Column(
+      body: Stack(
         children: [
-          const SizedBox(height: 10),
-          if (_isLoading) const LinearProgressIndicator(), // 로딩 인디케이터
-          if (pinnedMessage != null)
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8.0),
-              padding: const EdgeInsets.all(12.0),
-              decoration: BoxDecoration(
-                color: Colors.white, // 배경색
-                borderRadius: BorderRadius.circular(10), // 둥근 모서리
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      pinnedMessage!,
-                      style: Theme.of(context)
-                          .textTheme
-                          .bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.bold),
-                    ),
+          Column(
+            children: [
+              if (_isLoading) const LinearProgressIndicator(),
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: EdgeInsets.only(
+                    top: pinnedMessage != null ? 60.0 : 0.0,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () {
-                      setState(() {
-                        pinnedMessage = null;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              itemCount: widget.room.messages.length,
-              itemBuilder: (context, index) {
-                final message = widget.room.messages[index];
-                final isUserMessage = message.sender == 'User';
+                  itemCount: widget.room.messages.length,
+                  itemBuilder: (context, index) {
+                    final message = widget.room.messages[index];
+                    final isUserMessage = message.sender == 'User';
 
-                return Dismissible(
-                  key: Key(message.content + index.toString()),
-                  direction: DismissDirection.endToStart,
-                  onDismissed: (direction) {
-                    setState(() {
-                      widget.room.messages.removeAt(index);
-                      if (widget.room.messages.isNotEmpty) {
-                        final lastMessage = widget.room.messages.last;
-                        widget.room.lastMessage = lastMessage.content;
-                        widget.room.lastMessageTime = lastMessage.timestamp;
-                      } else {
-                        widget.room.lastMessage = '';
-                        widget.room.lastMessageTime = null;
-                      }
-                    });
-                    saveChatRoom(); // 채팅방 저장
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Message deleted')),
-                    );
-                  },
-                  background: Container(
-                    color: Colors.red,
-                    alignment: Alignment.centerRight,
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: const Icon(Icons.delete, color: Colors.white),
-                  ),
-                  child: GestureDetector(
-                    onTap: () {
-                      showDialog(
-                        barrierDismissible: false,
-                        context: context,
-                        builder: (BuildContext context) {
-                          return SimpleDialog(
-                            children: [
-                              ListTile(
-                                title: const Text('Copy'),
-                                onTap: () {
-                                  Clipboard.setData(
-                                      ClipboardData(text: message.content));
-                                  Navigator.of(context).pop();
-                                },
-                              ),
-                              ListTile(
-                                title: const Text('Share'),
-                                onTap: () {
-                                  // 공유 기능 구현
-                                  Navigator.of(context).pop();
-                                },
-                              ),
-                              ListTile(
-                                title: const Text('Delete message'),
-                                onTap: () {
-                                  setState(() {
-                                    widget.room.messages.removeAt(index);
-                                    if (widget.room.messages.isNotEmpty) {
-                                      final lastMessage =
-                                          widget.room.messages.last;
-                                      widget.room.lastMessage =
-                                          lastMessage.content;
-                                      widget.room.lastMessageTime =
-                                          lastMessage.timestamp;
-                                    } else {
-                                      widget.room.lastMessage = '';
-                                      widget.room.lastMessageTime = null;
-                                    }
-                                  });
-                                  saveChatRoom(); // 채팅방 저장
-                                  Navigator.of(context).pop();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text('Message deleted')),
-                                  );
-                                },
-                              ),
-                              ListTile(
-                                title: const Text('Stick the message on top'),
-                                onTap: () {
-                                  setState(() {
-                                    pinnedMessage = message.content;
-                                  });
-                                  Navigator.of(context).pop();
-                                },
-                              ),
-                            ],
+                    return Dismissible(
+                      key: Key(message.content + index.toString()),
+                      direction: DismissDirection.endToStart,
+                      onDismissed: (direction) {
+                        setState(() {
+                          widget.room.messages.removeAt(index);
+                          if (widget.room.messages.isNotEmpty) {
+                            final lastMessage = widget.room.messages.last;
+                            widget.room.lastMessage = lastMessage.content;
+                            widget.room.lastMessageTime = lastMessage.timestamp;
+                          } else {
+                            widget.room.lastMessage = '';
+                            widget.room.lastMessageTime = null;
+                          }
+                        });
+                        saveChatRoom();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Message deleted')),
+                        );
+                      },
+                      background: Container(
+                        color: Colors.red,
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: const Icon(Icons.delete, color: Colors.white),
+                      ),
+                      child: GestureDetector(
+                        onTap: () {
+                          showDialog(
+                            barrierDismissible: false,
+                            context: context,
+                            builder: (BuildContext context) {
+                              return SimpleDialog(
+                                children: [
+                                  ListTile(
+                                    title: const Text('Copy'),
+                                    onTap: () {
+                                      Clipboard.setData(
+                                          ClipboardData(text: message.content));
+                                      Navigator.of(context).pop();
+                                    },
+                                  ),
+                                  ListTile(
+                                    title: const Text('Share'),
+                                    onTap: () {
+                                      // 공유 기능 구현
+                                      Navigator.of(context).pop();
+                                    },
+                                  ),
+                                  ListTile(
+                                    title: const Text('Delete message'),
+                                    onTap: () {
+                                      setState(() {
+                                        widget.room.messages.removeAt(index);
+                                        if (widget.room.messages.isNotEmpty) {
+                                          final lastMessage =
+                                              widget.room.messages.last;
+                                          widget.room.lastMessage =
+                                              lastMessage.content;
+                                          widget.room.lastMessageTime =
+                                              lastMessage.timestamp;
+                                        } else {
+                                          widget.room.lastMessage = '';
+                                          widget.room.lastMessageTime = null;
+                                        }
+                                      });
+                                      saveChatRoom();
+                                      Navigator.of(context).pop();
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
+                                        const SnackBar(
+                                            content: Text('Message deleted')),
+                                      );
+                                    },
+                                  ),
+                                  ListTile(
+                                    title:
+                                        const Text('Stick the message on top'),
+                                    onTap: () {
+                                      setState(() {
+                                        pinnedMessage = message.content;
+                                        isPinnedMessageExpanded = false;
+                                      });
+                                      Navigator.of(context).pop();
+                                    },
+                                  ),
+                                ],
+                              );
+                            },
                           );
                         },
-                      );
-                    },
-                    onLongPress: () {
-                      setState(() {
-                        pinnedMessage = message.content;
-                      });
-                    },
-                    child: Align(
-                      alignment: isUserMessage
-                          ? Alignment.centerRight
-                          : Alignment.centerLeft,
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8.0, vertical: 4.0),
-                        child: isUserMessage
-                            ? Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Flexible(
-                                    child: Container(
-                                      constraints: BoxConstraints(
-                                        maxWidth:
-                                            MediaQuery.of(context).size.width *
-                                                0.6,
-                                      ),
-                                      padding: const EdgeInsets.all(12.0),
-                                      decoration: BoxDecoration(
-                                        color: Colors.yellow[600],
-                                        borderRadius: const BorderRadius.only(
-                                          topLeft: Radius.circular(16),
-                                          bottomLeft: Radius.circular(16),
-                                          bottomRight: Radius.circular(16),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        message.content,
-                                        style: const TextStyle(
-                                          color: Colors.black,
-                                          fontSize: 16,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    DateFormat('HH:mm')
-                                        .format(message.timestamp),
+                        onLongPress: () {
+                          setState(() {
+                            pinnedMessage = message.content;
+                            isPinnedMessageExpanded = false;
+                          });
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0, vertical: 4.0),
+                          child: isUserMessage
+                              ? buildUserMessage(message)
+                              : buildAssistantMessage(message),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              Container(
+                color: Colors.white,
+                padding: const EdgeInsets.only(
+                    left: 8.0, right: 8.0, bottom: 8.0, top: 4.0),
+                child: IntrinsicHeight(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      IconButton(
+                        onPressed: () {
+                          // 기능 구현
+                        },
+                        icon: const Icon(Icons.add),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxHeight: 150.0,
+                          ),
+                          child: Scrollbar(
+                            child: TextField(
+                              controller: controller,
+                              maxLines: null,
+                              keyboardType: TextInputType.multiline,
+                              decoration: InputDecoration(
+                                hintText: 'Input message here',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(24.0),
+                                  borderSide: BorderSide.none,
+                                ),
+                                fillColor: Colors.grey[200],
+                                filled: true,
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16.0, vertical: 12.0),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: () {
+                          // 기능 구현
+                        },
+                        icon: const Icon(Icons.tag_faces),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.yellow,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: IconButton(
+                          onPressed: isButtonEnabled && !_isLoading
+                              ? sendMessage
+                              : null,
+                          icon: const Icon(Icons.send),
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (pinnedMessage != null)
+            Positioned(
+              top: _isLoading ? 4.0 : 0.0,
+              left: 0,
+              right: 0,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Stack(
+                  children: [
+                    // Main container
+                    Container(
+                      padding: const EdgeInsets.only(
+                          left: 40.0, right: 8.0, top: 12.0, bottom: 12.0),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          // Message area
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () {
+                                if (isPinnedMessageMultiLine()) {
+                                  setState(() {
+                                    isPinnedMessageExpanded =
+                                        !isPinnedMessageExpanded;
+                                  });
+                                }
+                              },
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight: isPinnedMessageExpanded
+                                      ? MediaQuery.of(context).size.height * 0.5
+                                      : 40.0,
+                                ),
+                                child: SingleChildScrollView(
+                                  child: Text(
+                                    pinnedMessage!,
                                     style: Theme.of(context)
                                         .textTheme
-                                        .labelSmall
-                                        ?.copyWith(color: Colors.grey),
+                                        .bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
                                   ),
-                                ],
-                              )
-                            : Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Flexible(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            CircleAvatar(
-                                              backgroundColor: Colors.grey[300],
-                                              child: const Icon(Icons.person,
-                                                  color: Colors.white),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              widget.room.name,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .labelSmall
-                                                  ?.copyWith(
-                                                      color: Colors.black),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Container(
-                                          constraints: BoxConstraints(
-                                            maxWidth: MediaQuery.of(context)
-                                                    .size
-                                                    .width *
-                                                0.6,
-                                          ),
-                                          padding: const EdgeInsets.all(12.0),
-                                          decoration: const BoxDecoration(
-                                            color: Colors.white,
-                                            borderRadius: BorderRadius.only(
-                                              topRight: Radius.circular(16),
-                                              bottomLeft: Radius.circular(16),
-                                              bottomRight: Radius.circular(16),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            message.content,
-                                            style: const TextStyle(
-                                              color: Colors.black,
-                                              fontSize: 16,
-                                            ),
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          DateFormat('HH:mm')
-                                              .format(message.timestamp),
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .labelSmall
-                                              ?.copyWith(color: Colors.grey),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
+                            ),
+                          ),
+                          // Arrow icon
+                          if (isPinnedMessageMultiLine())
+                            IconButton(
+                              icon: Icon(
+                                isPinnedMessageExpanded
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  isPinnedMessageExpanded =
+                                      !isPinnedMessageExpanded;
+                                });
+                              },
+                            ),
+                        ],
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
-          ),
-          Container(
-            color: Colors.white, // 입력 필드 배경색
-            padding: const EdgeInsets.only(
-                left: 8.0, right: 8.0, bottom: 8.0, top: 4.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: controller,
-                    maxLines: null, // 여러 줄 입력 허용
-                    keyboardType: TextInputType.multiline,
-                    decoration: InputDecoration(
-                      hintText: 'Input message here', // 플레이스홀더 텍스트
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24.0),
-                        borderSide: BorderSide.none,
+                    // Left-positioned blue megaphone icon
+                    const Positioned(
+                      left: 8.0,
+                      top: 12.0,
+                      child: Icon(
+                        Icons.campaign,
+                        color: Colors.blue,
                       ),
-                      fillColor: Colors.grey[200],
-                      filled: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16.0, vertical: 12.0),
                     ),
-                  ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                CircleAvatar(
-                  backgroundColor: Colors.yellow, // 전송 버튼 배경색
-                  child: IconButton(
-                    onPressed:
-                        isButtonEnabled && !_isLoading ? sendMessage : null,
-                    icon: const Icon(Icons.send, color: Colors.white),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
         ],
       ),
     );
