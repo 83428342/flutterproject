@@ -5,8 +5,18 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:timezone/data/latest_all.dart' as tzdata;
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize timezone data
+  tzdata.initializeTimeZones();
+
+  // Set the local timezone to 'Asia/Seoul'
+  tz.setLocalLocation(tz.getLocation('Asia/Seoul'));
+
   runApp(const MyApp());
 }
 
@@ -82,7 +92,8 @@ class _MainRoomState extends State<MainRoom>
 
   void addChattingRoom(String roomName) {
     setState(() {
-      final newRoom = Room(name: roomName, id: DateTime.now().toString());
+      final newRoom =
+          Room(name: roomName, id: tz.TZDateTime.now(tz.local).toString());
       chattingRooms.add(newRoom);
       _sortRooms();
     });
@@ -168,8 +179,8 @@ class _MainRoomState extends State<MainRoom>
         if (_tabController.index == 0) {
           return a.name.compareTo(b.name);
         } else {
-          return (b.lastMessageTime ?? DateTime.now())
-              .compareTo(a.lastMessageTime ?? DateTime.now());
+          return (b.lastMessageTime ?? tz.TZDateTime.now(tz.local))
+              .compareTo(a.lastMessageTime ?? tz.TZDateTime.now(tz.local));
         }
       });
     });
@@ -226,18 +237,26 @@ class _MainRoomState extends State<MainRoom>
               itemBuilder: (BuildContext context, int index) {
                 final room = chattingRooms[index];
 
-                final now = DateTime.now();
+                final now = tz.TZDateTime.now(tz.local);
                 String timeDisplay;
                 if (room.lastMessageTime != null) {
-                  final difference = now.difference(room.lastMessageTime!);
-                  if (difference.inDays > 1) {
+                  final today =
+                      tz.TZDateTime(tz.local, now.year, now.month, now.day);
+                  final messageDate = tz.TZDateTime(
+                      tz.local,
+                      room.lastMessageTime!.year,
+                      room.lastMessageTime!.month,
+                      room.lastMessageTime!.day);
+                  final difference = today.difference(messageDate).inDays;
+
+                  if (difference == 0) {
                     timeDisplay =
-                        DateFormat('MM/dd').format(room.lastMessageTime!);
-                  } else if (difference.inDays == 1) {
+                        DateFormat('HH:mm').format(room.lastMessageTime!);
+                  } else if (difference == 1) {
                     timeDisplay = 'Yesterday';
                   } else {
                     timeDisplay =
-                        DateFormat('HH:mm').format(room.lastMessageTime!);
+                        DateFormat('MM/dd').format(room.lastMessageTime!);
                   }
                 } else {
                   timeDisplay = '';
@@ -374,7 +393,7 @@ class Room {
   final String name;
   final String id;
   String lastMessage;
-  DateTime? lastMessageTime;
+  tz.TZDateTime? lastMessageTime;
   bool isPinned;
   List<Message> messages;
 
@@ -383,9 +402,9 @@ class Room {
     required this.id,
     this.lastMessage = '',
     this.isPinned = false,
-    DateTime? lastMessageTime,
+    tz.TZDateTime? lastMessageTime,
     List<Message>? messages,
-  })  : lastMessageTime = lastMessageTime ?? DateTime.now(),
+  })  : lastMessageTime = lastMessageTime ?? tz.TZDateTime.now(tz.local),
         messages = messages ?? [];
 
   Map<String, dynamic> toJson() {
@@ -405,7 +424,7 @@ class Room {
       id: json['id'],
       lastMessage: json['lastMessage'],
       lastMessageTime: json['lastMessageTime'] != null
-          ? DateTime.parse(json['lastMessageTime'])
+          ? tz.TZDateTime.parse(tz.local, json['lastMessageTime'])
           : null,
       isPinned: json['isPinned'] ?? false,
       messages: (json['messages'] as List<dynamic>?)
@@ -419,7 +438,7 @@ class Room {
 class Message {
   final String sender;
   final String content;
-  final DateTime timestamp;
+  final tz.TZDateTime timestamp;
 
   Message({
     required this.sender,
@@ -439,7 +458,7 @@ class Message {
     return Message(
       sender: json['sender'],
       content: json['content'],
-      timestamp: DateTime.parse(json['timestamp']),
+      timestamp: tz.TZDateTime.parse(tz.local, json['timestamp']),
     );
   }
 }
@@ -506,7 +525,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
   void sendMessage() {
     if (controller.text.isNotEmpty && controller.text.length >= 20) {
       final userMessage = controller.text;
-      final timestamp = DateTime.now();
+      final timestamp = tz.TZDateTime.now(tz.local);
       setState(() {
         widget.room.messages.add(Message(
           sender: 'User',
@@ -540,7 +559,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
         headers: {
           'Content-Type': 'application/json',
           'Authorization':
-              'Bearer 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',
+              'Bearer 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', // Replace with your API key
         },
         body: json.encode({
           'model': 'llama3-8b-8192',
@@ -548,7 +567,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
         }),
       );
 
-      final timestamp = DateTime.now();
+      final timestamp = tz.TZDateTime.now(tz.local);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
