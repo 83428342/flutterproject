@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart'; // 추가된 import
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(const MyApp());
@@ -26,44 +26,57 @@ class MainRoom extends StatefulWidget {
   State<MainRoom> createState() => _MainRoomState();
 }
 
-class _MainRoomState extends State<MainRoom> {
+class _MainRoomState extends State<MainRoom>
+    with SingleTickerProviderStateMixin {
   final List<Room> chattingRooms = [];
-  int _selectedSortIndex = 0;
+  late TabController _tabController; // TabController 추가
 
   @override
   void initState() {
     super.initState();
-    _initializeAsync(); // 비동기 초기화 함수 호출
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (!_tabController.indexIsChanging) {
+        _sortRooms();
+      }
+    });
+    _initializeAsync(); // 비동기 초기화
   }
 
   Future<void> _initializeAsync() async {
-    await loadChatRooms(); // 채팅방 목록 로드
+    await loadChatRooms(); // 채팅방 로드
   }
 
   Future<String> _getDocumentsDirectory() async {
-    final directory = await getApplicationDocumentsDirectory();
-    return directory.path;
-  }
-
-  Future<void> saveChatRooms() async {
-    final path = await _getDocumentsDirectory();
-    final file = File('$path/chatlog.json');
-    List<Map<String, dynamic>> jsonList =
-        chattingRooms.map((room) => room.toJson()).toList();
-    await file.writeAsString(json.encode(jsonList));
+    if (Platform.isAndroid) {
+      return '/storage/emulated/0/Download'; // 다운로드 폴더 경로
+    } else {
+      final directory = await getApplicationDocumentsDirectory();
+      return directory.path;
+    }
   }
 
   Future<void> loadChatRooms() async {
-    final path = await _getDocumentsDirectory();
-    final file = File('$path/chatlog.json');
-    if (await file.exists()) {
-      String contents = await file.readAsString();
-      List<dynamic> jsonList = json.decode(contents);
+    try {
+      final path = await _getDocumentsDirectory();
+      final directory = Directory(path);
+      final files = directory.listSync();
+
       setState(() {
         chattingRooms.clear();
-        chattingRooms
-            .addAll(jsonList.map((json) => Room.fromJson(json)).toList());
+        for (var file in files) {
+          if (file is File &&
+              file.path.endsWith('.json') &&
+              file.path.contains('log_')) {
+            String contents = file.readAsStringSync();
+            Map<String, dynamic> jsonData = json.decode(contents);
+            chattingRooms.add(Room.fromJson(jsonData));
+          }
+        }
       });
+      print('Chat rooms loaded from $path');
+    } catch (e) {
+      print('Error loading chat rooms: $e');
     }
   }
 
@@ -73,7 +86,21 @@ class _MainRoomState extends State<MainRoom> {
       chattingRooms.add(newRoom);
       _sortRooms();
     });
-    saveChatRooms(); // 저장
+    saveChatRoom(chattingRooms.last); // 새 채팅방 저장
+  }
+
+  Future<void> saveChatRoom(Room room) async {
+    try {
+      final path = await _getDocumentsDirectory();
+      String sanitizedAgentName =
+          room.name.replaceAll(RegExp(r'[<>:"\/\\|?*]'), '_');
+      final file = File('$path/log_$sanitizedAgentName.json');
+      Map<String, dynamic> jsonData = room.toJson();
+      await file.writeAsString(json.encode(jsonData));
+      print('Chat room saved to $path/log_$sanitizedAgentName.json');
+    } catch (e) {
+      print('Error saving chat room: $e');
+    }
   }
 
   void chattingRoomDialog() {
@@ -82,13 +109,13 @@ class _MainRoomState extends State<MainRoom> {
     bool isAgentNameValid = false;
 
     showDialog(
-      barrierDismissible: false, // 다이얼로그 바깥을 눌러도 닫히지 않도록 설정
+      barrierDismissible: false, // 다이얼로그 밖을 탭하여 닫히는 것을 방지
       context: context,
       builder: (BuildContext context) {
         return StatefulBuilder(
           builder: (context, setState) {
             bool validateAgentName(String value) {
-              // 알파벳, 숫자, 밑줄(_)만 포함하고 최소 10자 이상이어야 함
+              // 10자 이상의 문자, 숫자, 밑줄만 허용
               RegExp regExp = RegExp(r'^[a-zA-Z0-9_]{10,}$');
               return regExp.hasMatch(value);
             }
@@ -97,7 +124,7 @@ class _MainRoomState extends State<MainRoom> {
               title: const Text('Agent Name'),
               content: TextField(
                 controller: controller,
-                maxLines: 1, // 다중 행 입력 불가
+                maxLines: 1, // 단일 행 입력
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z0-9_]')),
                 ],
@@ -139,14 +166,22 @@ class _MainRoomState extends State<MainRoom> {
       chattingRooms.sort((a, b) {
         if (a.isPinned && !b.isPinned) return -1;
         if (!a.isPinned && b.isPinned) return 1;
-        if (_selectedSortIndex == 0) {
+        if (_tabController.index == 0) {
+          // 이름으로 정렬
           return a.name.compareTo(b.name);
         } else {
+          // 날짜로 정렬
           return (b.lastMessageTime ?? DateTime.now())
               .compareTo(a.lastMessageTime ?? DateTime.now());
         }
       });
     });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose(); // TabController 해제
+    super.dispose();
   }
 
   @override
@@ -156,159 +191,168 @@ class _MainRoomState extends State<MainRoom> {
         title: const Text('Chatting',
             style: TextStyle(fontWeight: FontWeight.w500)),
         actions: [
-          const IconButton(
-            onPressed: null,
-            icon: Icon(Icons.search),
+          IconButton(
+            onPressed: () {
+              // 검색 기능 구현 또는 비워두기
+            },
+            icon: const Icon(Icons.search),
           ),
           IconButton(
             onPressed: chattingRoomDialog,
             icon: const Icon(Icons.chat_bubble_outline),
           ),
-          const IconButton(
-            onPressed: null,
-            icon: Icon(Icons.settings_outlined),
+          IconButton(
+            onPressed: () {
+              // 설정 기능 구현 또는 비워두기
+            },
+            icon: const Icon(Icons.settings_outlined),
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(
+              icon: Icon(Icons.person),
+              text: 'Sort by name',
+            ),
+            Tab(
+              icon: Icon(Icons.chat_bubble_outline),
+              text: 'Sort by date',
+            ),
+          ],
+        ),
       ),
-      body: ListView.builder(
-        itemCount: chattingRooms.length,
-        itemBuilder: (BuildContext context, int index) {
-          final room = chattingRooms[index];
+      body: chattingRooms.isEmpty
+          ? const Center(child: Text('No chat rooms available.'))
+          : ListView.builder(
+              itemCount: chattingRooms.length,
+              itemBuilder: (BuildContext context, int index) {
+                final room = chattingRooms[index];
 
-          final now = DateTime.now();
-          String timeDisplay;
-          if (room.lastMessageTime != null) {
-            final difference = now.difference(room.lastMessageTime!);
-            if (difference.inDays > 1) {
-              timeDisplay = DateFormat('MM/dd').format(room.lastMessageTime!);
-            } else if (difference.inDays == 1) {
-              timeDisplay = 'Yesterday';
-            } else {
-              timeDisplay = DateFormat('HH:mm').format(room.lastMessageTime!);
-            }
-          } else {
-            timeDisplay = '';
-          }
+                final now = DateTime.now();
+                String timeDisplay;
+                if (room.lastMessageTime != null) {
+                  final difference = now.difference(room.lastMessageTime!);
+                  if (difference.inDays > 1) {
+                    timeDisplay =
+                        DateFormat('MM/dd').format(room.lastMessageTime!);
+                  } else if (difference.inDays == 1) {
+                    timeDisplay = 'Yesterday';
+                  } else {
+                    timeDisplay =
+                        DateFormat('HH:mm').format(room.lastMessageTime!);
+                  }
+                } else {
+                  timeDisplay = '';
+                }
 
-          return ListTile(
-            leading: CircleAvatar(
-              radius: 20,
-              backgroundColor: Colors.grey[300],
-              child: const Icon(Icons.person, color: Colors.white),
-            ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    room.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
+                return ListTile(
+                  leading: CircleAvatar(
+                    radius: 20,
+                    backgroundColor: Colors.grey[300],
+                    child: const Icon(Icons.person, color: Colors.white),
                   ),
-                ),
-                if (room.isPinned)
-                  const Icon(Icons.push_pin, size: 16, color: Colors.orange),
-              ],
-            ),
-            subtitle: Text(
-              room.lastMessage.isEmpty ? 'No messages yet' : room.lastMessage,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: Colors.grey[500],
-                  ),
-              overflow: TextOverflow.ellipsis,
-            ),
-            trailing: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  timeDisplay,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: Colors.grey,
-                      ),
-                ),
-                const SizedBox(height: 4),
-                if (room.messages.isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Text(
-                      '${room.messages.length}',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: Colors.white,
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          room.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
                           ),
-                    ),
-                  ),
-              ],
-            ),
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ChattingScreen(room: room),
-                ),
-              ).then((_) {
-                setState(() {});
-              });
-            },
-            onLongPress: () {
-              showDialog(
-                context: context,
-                builder: (BuildContext context) {
-                  return AlertDialog(
-                    title:
-                        Text(room.isPinned ? 'Unstick on top' : 'Stick on top'),
-                    content: Text(room.isPinned
-                        ? "Do you want to unput '${room.name}' on the top of the list?"
-                        : "Do you want to put '${room.name}' on the top of the list?"),
-                    actions: [
-                      TextButton(
-                        onPressed: () {
-                          setState(() {
-                            room.isPinned = !room.isPinned;
-                            _sortRooms();
-                          });
-                          saveChatRooms(); // 저장
-                          Navigator.of(context).pop(); // 다이얼로그 닫기
-                        },
-                        child: const Text('Yes'),
+                        ),
                       ),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pop(); // 다이얼로그 닫기
-                        },
-                        child: const Text('No'),
-                      ),
+                      if (room.isPinned)
+                        const Icon(Icons.push_pin,
+                            size: 16, color: Colors.orange),
                     ],
-                  );
-                },
-              );
-            },
-          );
-        },
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _selectedSortIndex,
-        onTap: (index) {
-          setState(() {
-            _selectedSortIndex = index;
-            _sortRooms();
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: 'Sort by name',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline),
-            label: 'Sort by date',
-          ),
-        ],
-      ),
+                  ),
+                  subtitle: Text(
+                    room.lastMessage.isEmpty
+                        ? 'No messages yet'
+                        : room.lastMessage,
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          color: Colors.grey[500],
+                        ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        timeDisplay,
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: Colors.grey,
+                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      if (room.messages.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
+                            color: Colors.red,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Text(
+                            '${room.messages.length}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                                  color: Colors.white,
+                                ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChattingScreen(room: room),
+                      ),
+                    ).then((_) {
+                      setState(() {});
+                    });
+                  },
+                  onLongPress: () {
+                    showDialog(
+                      context: context,
+                      builder: (BuildContext context) {
+                        return AlertDialog(
+                          title: Text(room.isPinned
+                              ? 'Unstick on top'
+                              : 'Stick on top'),
+                          content: Text(room.isPinned
+                              ? "Do you want to unput '${room.name}' on the top of the list?"
+                              : "Do you want to put '${room.name}' on the top of the list?"),
+                          actions: [
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  room.isPinned = !room.isPinned;
+                                  _sortRooms();
+                                });
+                                saveChatRoom(room); // 채팅방 저장
+                                Navigator.of(context).pop(); // 다이얼로그 닫기
+                              },
+                              child: const Text('Yes'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.of(context).pop(); // 다이얼로그 닫기
+                              },
+                              child: const Text('No'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
     );
   }
 }
@@ -414,28 +458,26 @@ class _ChattingScreenState extends State<ChattingScreen> {
   }
 
   Future<String> _getDocumentsDirectory() async {
-    final directory = await getApplicationDocumentsDirectory();
-    return directory.path;
+    if (Platform.isAndroid) {
+      return '/storage/emulated/0/Download'; // 다운로드 폴더 경로
+    } else {
+      final directory = await getApplicationDocumentsDirectory();
+      return directory.path;
+    }
   }
 
-  Future<void> saveChatRooms() async {
-    final path = await _getDocumentsDirectory();
-    final file = File('$path/chatlog.json');
-    List<Room> allRooms = [];
-    if (await file.exists()) {
-      String contents = await file.readAsString();
-      List<dynamic> jsonList = json.decode(contents);
-      allRooms = jsonList.map((json) => Room.fromJson(json)).toList();
+  Future<void> saveChatRoom() async {
+    try {
+      final path = await _getDocumentsDirectory();
+      String sanitizedAgentName =
+          widget.room.name.replaceAll(RegExp(r'[<>:"\/\\|?*]'), '_');
+      final file = File('$path/log_$sanitizedAgentName.json');
+      Map<String, dynamic> jsonData = widget.room.toJson();
+      await file.writeAsString(json.encode(jsonData));
+      print('Chat room saved to $path/log_$sanitizedAgentName.json');
+    } catch (e) {
+      print('Error saving chat room: $e');
     }
-    int index = allRooms.indexWhere((room) => room.id == widget.room.id);
-    if (index != -1) {
-      allRooms[index] = widget.room;
-    } else {
-      allRooms.add(widget.room);
-    }
-    List<Map<String, dynamic>> jsonList =
-        allRooms.map((room) => room.toJson()).toList();
-    await file.writeAsString(json.encode(jsonList));
   }
 
   List<Map<String, String>> getMessagesForApi() {
@@ -463,7 +505,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
         isButtonEnabled = false;
         _isLoading = true; // 로딩 시작
       });
-      saveChatRooms(); // 저장
+      saveChatRoom(); // 채팅방 저장
       _sendMessage(userMessage).then((_) {
         if (mounted) {
           setState(() {
@@ -478,42 +520,53 @@ class _ChattingScreenState extends State<ChattingScreen> {
   Future<void> _sendMessage(String message) async {
     List<Map<String, String>> messagesForApi = getMessagesForApi();
 
-    final response = await http.post(
-      Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization':
-            'Bearer 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', // 실제 API 키로 대체하세요.
-      },
-      body: json.encode({
-        'model': 'llama3-8b-8192',
-        'messages': messagesForApi,
-      }),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization':
+              'Bearer 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',
+        },
+        body: json.encode({
+          'model': 'llama3-8b-8192',
+          'messages': messagesForApi,
+        }),
+      );
 
-    final timestamp = DateTime.now();
+      final timestamp = DateTime.now();
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      final apiResponse = data['choices'][0]['message']['content'];
-      if (!mounted) return;
-      setState(() {
-        widget.room.messages.add(Message(
-          sender: 'Assistant',
-          content: apiResponse,
-          timestamp: timestamp,
-        ));
-        widget.room.lastMessage = apiResponse;
-        widget.room.lastMessageTime = timestamp;
-      });
-      saveChatRooms(); // 저장
-    } else {
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final apiResponse = data['choices'][0]['message']['content'];
+        if (!mounted) return;
+        setState(() {
+          widget.room.messages.add(Message(
+            sender: 'Assistant',
+            content: apiResponse,
+            timestamp: timestamp,
+          ));
+          widget.room.lastMessage = apiResponse;
+          widget.room.lastMessageTime = timestamp;
+        });
+        saveChatRoom(); // 채팅방 저장
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to get response from server.')),
+        );
+      }
+      _scrollToBottom();
+    } catch (e) {
+      print('Error sending message: $e');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to get response from server.')),
+        const SnackBar(content: Text('An error occurred.')),
       );
+      setState(() {
+        _isLoading = false;
+      });
     }
-    _scrollToBottom();
   }
 
   void _scrollToBottom() {
@@ -538,21 +591,21 @@ class _ChattingScreenState extends State<ChattingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.blue[200], // 채팅방 배경색 변경
+      backgroundColor: Colors.blue[200], // 채팅방 배경색
       appBar: AppBar(
         title: Text(widget.room.name),
       ),
       body: Column(
         children: [
           const SizedBox(height: 10),
-          if (_isLoading) const LinearProgressIndicator(), // 로딩 인디케이터 표시
+          if (_isLoading) const LinearProgressIndicator(), // 로딩 인디케이터
           if (pinnedMessage != null)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 8.0),
               padding: const EdgeInsets.all(12.0),
               decoration: BoxDecoration(
-                color: Colors.white, // 배경색 흰색
-                borderRadius: BorderRadius.circular(10), // 모서리 반경 10
+                color: Colors.white, // 배경색
+                borderRadius: BorderRadius.circular(10), // 둥근 모서리
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -600,7 +653,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                         widget.room.lastMessageTime = null;
                       }
                     });
-                    saveChatRooms(); // 저장
+                    saveChatRoom(); // 채팅방 저장
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(content: Text('Message deleted')),
                     );
@@ -630,7 +683,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                               ListTile(
                                 title: const Text('Share'),
                                 onTap: () {
-                                  // 공유 기능 구현 필요
+                                  // 공유 기능 구현
                                   Navigator.of(context).pop();
                                 },
                               ),
@@ -651,7 +704,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                                       widget.room.lastMessageTime = null;
                                     }
                                   });
-                                  saveChatRooms(); // 저장
+                                  saveChatRoom(); // 채팅방 저장
                                   Navigator.of(context).pop();
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
@@ -799,7 +852,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
             ),
           ),
           Container(
-            color: Colors.white, // 메시지 입력 칸 배경색 흰색
+            color: Colors.white, // 입력 필드 배경색
             padding: const EdgeInsets.only(
                 left: 8.0, right: 8.0, bottom: 8.0, top: 4.0),
             child: Row(
@@ -807,10 +860,10 @@ class _ChattingScreenState extends State<ChattingScreen> {
                 Expanded(
                   child: TextField(
                     controller: controller,
-                    maxLines: null, // 여러 줄 입력 가능하도록 설정
+                    maxLines: null, // 여러 줄 입력 허용
                     keyboardType: TextInputType.multiline,
                     decoration: InputDecoration(
-                      hintText: 'Input message here', // 플레이스홀더 텍스트 변경
+                      hintText: 'Input message here', // 플레이스홀더 텍스트
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(24.0),
                         borderSide: BorderSide.none,
@@ -824,7 +877,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                 ),
                 const SizedBox(width: 8),
                 CircleAvatar(
-                  backgroundColor: Colors.yellow, // 전송 버튼 배경색 노란색
+                  backgroundColor: Colors.yellow, // 전송 버튼 배경색
                   child: IconButton(
                     onPressed:
                         isButtonEnabled && !_isLoading ? sendMessage : null,
