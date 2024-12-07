@@ -70,6 +70,7 @@ class _MainRoomState extends State<MainRoom>
   // Load and Save Room List
   // ---------------------------
   Future<void> loadRoomList() async {
+    // 12페이지, chatlog.json 불러오기
     try {
       final path = await _getDocumentsDirectory();
       final file = File('$path/chatlog.json');
@@ -97,6 +98,7 @@ class _MainRoomState extends State<MainRoom>
   }
 
   Future<void> saveRoomList() async {
+    // 12페이지, chatlog.json 저장
     try {
       final path = await _getDocumentsDirectory();
       final file = File('$path/chatlog.json');
@@ -279,36 +281,38 @@ class _MainRoomState extends State<MainRoom>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chatting',
+        // 4페이지
+        title: const Text('Chatting', // 10페이지
             style: TextStyle(fontWeight: FontWeight.w500)),
         actions: [
           IconButton(
             onPressed: () {
               // 검색 기능 (미구현)
             },
-            icon: const Icon(Icons.search),
+            icon: const Icon(Icons.search), // 10페이지
           ),
           IconButton(
-            onPressed: chattingRoomDialog,
-            icon: const Icon(Icons.chat_bubble_outline),
+            onPressed: chattingRoomDialog, // 5페이지
+            icon: const Icon(Icons.chat_bubble_outline), // 10페이지
           ),
           IconButton(
             onPressed: () {
               // 설정 기능 (미구현)
             },
-            icon: const Icon(Icons.settings_outlined),
+            icon: const Icon(Icons.settings_outlined), // 10페이지
           ),
         ],
         bottom: TabBar(
-          controller: _tabController,
+          // 4페이지
+          controller: _tabController, // 6페이지, _tabController과 연동하여 sort기능 구현
           tabs: const [
             Tab(
               icon: Icon(Icons.person),
-              text: 'Sort by name',
+              text: 'Sort by name', // 6페이지
             ),
             Tab(
               icon: Icon(Icons.chat_bubble_outline),
-              text: 'Sort by date',
+              text: 'Sort by date', // 6페이지
             ),
           ],
         ),
@@ -316,6 +320,7 @@ class _MainRoomState extends State<MainRoom>
       body: chattingRooms.isEmpty
           ? const Center(child: Text('No chat rooms available.'))
           : ListView.builder(
+              // 4페이지
               itemCount: chattingRooms.length,
               itemBuilder: (BuildContext context, int index) {
                 final room = chattingRooms[index];
@@ -346,19 +351,22 @@ class _MainRoomState extends State<MainRoom>
                 }
 
                 return ListTile(
+                  // 4페이지
                   leading: SizedBox(
+                    // 11페이지
                     width: 40,
                     height: 40,
                     child: CircleAvatar(
                       backgroundColor: Colors.grey[300],
-                      child: const Icon(Icons.person, color: Colors.white),
+                      child:
+                          const Icon(Icons.person, color: Colors.white), // 7페이지
                     ),
                   ),
                   title: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        room.name,
+                        room.name, // 8페이지
                         style: const TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
@@ -368,8 +376,8 @@ class _MainRoomState extends State<MainRoom>
                         Padding(
                           padding: const EdgeInsets.only(left: 4.0),
                           child: Text(
-                            '${room.messages.length}',
-                            style: Theme.of(context)
+                            '${room.messages.length}', // 8페이지
+                            style: Theme.of(context) // 11페이지
                                 .textTheme
                                 .labelSmall
                                 ?.copyWith(
@@ -380,14 +388,16 @@ class _MainRoomState extends State<MainRoom>
                       if (room.isPinned)
                         const Padding(
                           padding: EdgeInsets.only(left: 8.0),
-                          child: Icon(Icons.push_pin,
-                              size: 16, color: Colors.orange),
+                          child: Icon(Icons.push_pin, // 8페이지
+                              size: 16,
+                              color: Colors.orange),
                         ),
                     ],
                   ),
                   subtitle: Text(
-                    room.lastMessage.isEmpty ? '' : room.lastMessage,
+                    room.lastMessage.isEmpty ? '' : room.lastMessage, // 8페이지
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                          // 11페이지
                           color: Colors.grey[500],
                         ),
                     overflow: TextOverflow.ellipsis,
@@ -396,8 +406,9 @@ class _MainRoomState extends State<MainRoom>
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Text(
-                        timeDisplay,
+                        timeDisplay, // 9페이지
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              // 11페이지
                               color: Colors.grey,
                             ),
                       ),
@@ -410,8 +421,8 @@ class _MainRoomState extends State<MainRoom>
                             shape: BoxShape.circle,
                           ),
                           child: Text(
-                            '${room.messages.length}',
-                            style: Theme.of(context)
+                            '${room.messages.length}', // 9페이지
+                            style: Theme.of(context) // 11페이지
                                 .textTheme
                                 .labelSmall
                                 ?.copyWith(
@@ -423,13 +434,16 @@ class _MainRoomState extends State<MainRoom>
                   ),
                   onTap: () {
                     Navigator.push(
+                      // 5페이지, 해당 room으로 이동
                       context,
                       MaterialPageRoute(
                         builder: (context) => ChattingScreen(room: room),
                       ),
-                    ).then((_) {
-                      setState(() {});
-                    });
+                    ).then(
+                      (_) {
+                        setState(() {});
+                      },
+                    );
                   },
                   onLongPress: () {
                     // 34페이지, barrierDismissible을 false로 설정하지 않음으로써 default값인 true를 반환함. 바깥을 누르면 dialog가 종료됨.
@@ -437,6 +451,7 @@ class _MainRoomState extends State<MainRoom>
                       context: context,
                       builder: (BuildContext context) {
                         return AlertDialog(
+                          // 6페이지, longClick시 dialog for sticky chat 호출
                           // 33페이지
                           title: Text(room.isPinned // 33페이지
                               ? 'Unstick on top'
@@ -562,7 +577,8 @@ class _ChattingScreenState extends State<ChattingScreen> {
     super.initState();
     controller.addListener(() {
       setState(() {
-        isButtonEnabled = controller.text.length >= 20;
+        isButtonEnabled =
+            controller.text.length >= 20; // 15페이지, 20글자 넘어야 버튼 활성화
       });
     });
     _loadChatLog();
@@ -648,6 +664,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
 
   void sendMessage() {
     if (controller.text.isNotEmpty && controller.text.length >= 20) {
+      // 15페이지, 20글자 넘었는지 확인
       final userMessage = controller.text;
       final timestamp = tz.TZDateTime.now(tz.local);
       setState(() {
@@ -680,6 +697,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
 
     try {
       final response = await http.post(
+        // 16페이지, HTTP 통신
         Uri.parse('https://api.groq.com/openai/v1/chat/completions'),
         headers: {
           'Content-Type': 'application/json',
@@ -902,12 +920,15 @@ class _ChattingScreenState extends State<ChattingScreen> {
         title: Text(widget.room.name),
       ),
       body: Stack(
+        // 14페이지
         children: [
           Column(
+            // 14페이지
             children: [
               if (_isLoading) const LinearProgressIndicator(),
               Expanded(
                 child: ListView.builder(
+                  // 14페이지
                   controller: _scrollController,
                   padding: EdgeInsets.zero, // 18페이지, 공지가 채팅 위에 그대로 덮어쓰게 함
                   itemCount: widget.room.messages.length,
@@ -916,11 +937,12 @@ class _ChattingScreenState extends State<ChattingScreen> {
                     final isUserMessage = message.sender == 'User';
 
                     return Dismissible(
+                      // 17페이지, 왼쪽으로 밀어 메시지 삭제
                       key: Key(message.content + index.toString()),
                       direction: DismissDirection.endToStart,
                       onDismissed: (direction) {
                         setState(() {
-                          widget.room.messages.removeAt(index);
+                          widget.room.messages.removeAt(index); // 18페이지, 삭제되는부분
                           if (widget.room.messages.isNotEmpty) {
                             final lastMessage = widget.room.messages.last;
                             widget.room.lastMessage = lastMessage.content;
@@ -930,7 +952,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                             widget.room.lastMessageTime = null;
                           }
                         });
-                        _saveChatLog(); // 26페이지, 왼쪽으로 밀어 메시지 삭제했을때
+                        _saveChatLog(); // 18페이지, cached file update // 26페이지, 왼쪽으로 밀어 메시지 삭제했을때
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(content: Text('Message deleted')),
                         );
@@ -944,6 +966,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                       child: GestureDetector(
                         onTap: () {
                           showDialog(
+                            // 16페이지
                             barrierDismissible: false,
                             context: context,
                             builder: (BuildContext context) {
@@ -1016,6 +1039,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                           );
                         },
                         onLongPress: () {
+                          // 17페이지, 길게 누를시 메시지 pin
                           setState(() {
                             pinnedMessage = message.content;
                             isPinnedMessageExpanded = false;
@@ -1040,6 +1064,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                     left: 8.0, right: 8.0, bottom: 8.0, top: 4.0),
                 child: IntrinsicHeight(
                   child: Row(
+                    // 14페이지
                     crossAxisAlignment:
                         CrossAxisAlignment.stretch, // 19페이지, 칸이 길어지면 버튼도 길어지게함
                     children: [
@@ -1060,10 +1085,10 @@ class _ChattingScreenState extends State<ChattingScreen> {
                           child: Scrollbar(
                             child: TextField(
                               controller: controller,
-                              maxLines: null,
+                              maxLines: null, // 15페이지, multi-line 허용
                               keyboardType: TextInputType.multiline,
                               decoration: const InputDecoration(
-                                hintText: 'Input message here',
+                                hintText: 'Input message here', // 15페이지
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.zero,
                                   borderSide: BorderSide.none,
@@ -1092,7 +1117,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
                         ),
                         child: IconButton(
                           onPressed: isButtonEnabled && !_isLoading
-                              ? sendMessage
+                              ? sendMessage // 16페이지, Icons.send를 누르면 sendMessage에서 HTTP와 통신
                               : null,
                           icon: const Icon(Icons.send),
                           color: Colors.black,
@@ -1111,7 +1136,7 @@ class _ChattingScreenState extends State<ChattingScreen> {
               right: 5.0, // 18페이지
               child: Container(
                 padding: const EdgeInsets.only(
-                    left: 40.0, right: 8.0, top: 12.0, bottom: 12.0),
+                    left: 8.0, right: 8.0, top: 12.0, bottom: 12.0),
                 decoration: BoxDecoration(
                   color: Colors.white, // 22페이지
                   borderRadius: BorderRadius.circular(10), // 22페이지
@@ -1121,6 +1146,9 @@ class _ChattingScreenState extends State<ChattingScreen> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
+                        const Icon(Icons.campaign,
+                            color: Colors.blue), // 아이콘 추가
+                        const SizedBox(width: 8), // 아이콘과 텍스트 사이 간격 추가
                         Expanded(
                           child: GestureDetector(
                             onTap: () {
@@ -1164,18 +1192,6 @@ class _ChattingScreenState extends State<ChattingScreen> {
                             },
                           ),
                       ],
-                    ),
-                    const Positioned(
-                      left: -32.0,
-                      top: 0.0,
-                      bottom: 0.0,
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Icon(
-                          Icons.campaign,
-                          color: Colors.blue,
-                        ),
-                      ),
                     ),
                   ],
                 ),
